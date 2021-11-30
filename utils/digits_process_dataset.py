@@ -9,6 +9,7 @@ from scipy import io
 import pickle
 from utils.ops import *
 
+
 def load_svhn(data_dir, split='train'):
     print('Loading SVHN dataset.')
     image_file = 'train_32x32.mat' if split == 'train' else 'test_32x32.mat'
@@ -19,8 +20,8 @@ def load_svhn(data_dir, split='train'):
     labels[np.where(labels == 10)] = 0
     return images, labels
 
-def load_mnist(data_dir, split='train'):
 
+def load_mnist(data_dir, split='train'):
     print('Loading MNIST dataset.')
     image_file = 'train.pkl' if split == 'train' else 'test.pkl'
     image_dir = os.path.join(data_dir, 'mnist', image_file)
@@ -31,6 +32,7 @@ def load_mnist(data_dir, split='train'):
     images = images / 255.
     images = np.stack((images, images, images), axis=3)  # grayscale to rgb
     return np.squeeze(images[:10000]), labels[:10000]
+
 
 def load_mnist_m(data_dir, split='train'):
     print('Loading MNIST_M dataset.')
@@ -60,6 +62,7 @@ def load_mnist_m(data_dir, split='train'):
     images = images / 255.
     return images, labels
 
+
 def load_syn(data_dir, split='train'):
     print('Loading SYN dataset.')
     image_file = 'synth_train_32x32.mat' if split == 'train' else 'synth_test_32x32.mat'
@@ -70,6 +73,7 @@ def load_syn(data_dir, split='train'):
     labels[np.where(labels == 10)] = 0
     images = images / 255.
     return images, labels
+
 
 def load_usps(data_dir, split='train'):
     print('Loading USPS dataset.')
@@ -90,8 +94,8 @@ def load_usps(data_dir, split='train'):
     images = np.stack((images, images, images), axis=3)  # grayscale to rgb
     return images, labels
 
-def load_test_data(data_dir, target):
 
+def load_test_data(data_dir, target):
     if target == 'svhn':
         target_test_images, target_test_labels = load_svhn(data_dir, split='test')
     elif target == 'mnist':
@@ -104,6 +108,7 @@ def load_test_data(data_dir, target):
         target_test_images, target_test_labels = load_mnist_m(data_dir, split='test')
     return target_test_images, target_test_labels
 
+
 def asarray_and_reshape(imgs, labels):
     imgs = np.asarray(imgs)
     labels = np.asarray(labels)
@@ -111,8 +116,8 @@ def asarray_and_reshape(imgs, labels):
     labels = np.reshape(labels, (-1,))
     return imgs, labels
 
-def construct_datasets(data_dir, batch_size, kwargs):
 
+def construct_datasets(data_dir, batch_size, kwargs):
     def data2loader(imgs, labels):
         assert len(imgs) == len(labels)
         y = torch.stack([torch.from_numpy(np.array(i)) for i in labels])
@@ -127,12 +132,13 @@ def construct_datasets(data_dir, batch_size, kwargs):
 
     return data2loader(train_imgs, train_labels), data2loader(val_imgs, val_labels)
 
+
 def validate(val_loader, model):
-    """Perform validation on the validation set"""
+    """在验证集上执行验证"""
     batch_time = AverageMeter()
     top1 = AverageMeter()
 
-    # switch to evaluate mode
+    # 切换到评估模式
     model.eval()
     params = list(model.parameters())
     end = time.time()
@@ -141,18 +147,18 @@ def validate(val_loader, model):
         input = input.cuda(non_blocking=True).float()
         with torch.no_grad():
             output = model.functional(params, False, input)
-        # measure accuracy and record loss
+        # 测量准确度并记录损失
         prec1 = accuracy(output.data, target, topk=(1,))[0]
         top1.update(prec1.item(), input.size(0))
 
-        # measure elapsed time
+        # 测量经过的时间
         batch_time.update(time.time() - end)
         end = time.time()
 
     return top1.avg
 
-def evaluation(model, data_dir, batch_size, kwargs):
 
+def evaluation(model, data_dir, batch_size, kwargs):
     def data2loader(imgs, labels):
         assert len(imgs) == len(labels)
         y = torch.stack([torch.from_numpy(np.array(i)) for i in labels])
@@ -160,7 +166,7 @@ def evaluation(model, data_dir, batch_size, kwargs):
         X = torch.stack([torch.from_numpy(imgs[i]) for i in range(len(labels))])
         X_dataset = torch.utils.data.TensorDataset(X, y)
         X_loader = torch.utils.data.DataLoader(X_dataset, batch_size=batch_size, shuffle=True, drop_last=True, **kwargs)
-        return  X_loader
+        return X_loader
 
     model.eval()
     params = list(model.parameters())
@@ -180,10 +186,10 @@ def evaluation(model, data_dir, batch_size, kwargs):
             input = input.cuda(non_blocking=True).float()
             with torch.no_grad():
                 output = model.functional(params, False, input)
-            # measure accuracy and record loss
+            # 测量准确度并记录损失
             prec1 = accuracy(output.data, target, topk=(1,))[0]
             top1.update(prec1.item(), input.size(0))
-            # measure elapsed time
+            # 测量经过的时间
             batch_time.update(time.time() - end)
             end = time.time()
 

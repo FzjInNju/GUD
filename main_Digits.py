@@ -10,9 +10,11 @@ from models.ada_conv import ConvNet, WAE, Adversary
 from metann import Learner
 from utils.digits_process_dataset import *
 
+# 设置随机数的种子，方便下次复现实验结果
 torch.manual_seed(0)
 numpy.random.seed(0)
 
+# 解析预备参数
 parser = argparse.ArgumentParser(description='Training on Digits')
 parser.add_argument('--data_dir', default='data', type=str,
                     help='dataset dir')
@@ -46,10 +48,11 @@ parser.add_argument('--resume', default=None, type=str,
                     help='path to saved checkpoint (default: none)')
 parser.add_argument('--name', default='Digits', type=str,
                     help='name of experiment')
-parser.add_argument('--mode',  default='train', type=str,
+parser.add_argument('--mode', default='train', type=str,
                     help='train or test')
 parser.add_argument('--GPU_ID', default=0, type=int,
                     help='GPU_id')
+
 
 def main():
     global args
@@ -61,12 +64,12 @@ def main():
 
     kwargs = {'num_workers': 4}
 
-    # create model, use Learner to wrap it
+    # 创建模型，使用 Learner 包装它
     model = Learner(ConvNet())
     model = model.cuda()
     cudnn.benchmark = True
 
-    # optionally resume from a checkpoint
+    # 检查是否可从检查点恢复
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
@@ -84,9 +87,10 @@ def main():
     else:
         evaluation(model, args.data_dir, args.batch_size, kwargs)
 
+
 def train(model, exp_name, kwargs):
     print('Pre-train wae')
-    # construct train and val dataloader
+    # 构建 train 和 val 的数据加载器
     train_loader, val_loader = construct_datasets(args.data_dir, args.batch_size, kwargs)
     wae = WAE().cuda()
     wae_optimizer = torch.optim.Adam(wae.parameters(), lr=1e-3)
@@ -97,16 +101,16 @@ def train(model, exp_name, kwargs):
         wae_train(wae, discriminator, train_loader, wae_optimizer, d_optimizer, epoch)
 
     print('Training task model')
-    # define loss function (criterion) and optimizer
+    # 定义损失函数的标准和优化器
     criterion = nn.CrossEntropyLoss().cuda()
     mse_loss = nn.MSELoss().cuda()
     optimizer = torch.optim.Adam(model.parameters(), args.lr)
 
-    # only augmented domains
+    # 仅适用于增强域
     only_virtual_test_images = []
     only_virtual_test_labels = []
     train_loader_iter = iter(train_loader)
-    # counter for domain augmentation
+    # 记录域增强结果
     counter_k = 0
 
     for t in range(args.start_iters, args.num_iters):
@@ -119,7 +123,7 @@ def train(model, exp_name, kwargs):
         src_num = int(args.batch_size / (counter_k + 1))
         aug_num = args.batch_size - src_num
 
-        # domain augmentation
+        # 扩充领域
         if (t > args.advstart_iter) and ((t + 1 - args.advstart_iter) % args.T_min == 0) and (counter_k < args.K):
             model.eval()
             params = list(model.parameters())
@@ -154,14 +158,14 @@ def train(model, exp_name, kwargs):
                     input_feat, output = model.functional(params, False, input_comb, return_feat=True)
                     recon_batch, _, = wae(input_comb)
 
-                # iteratively generate adversarial samples
+                # TODO: ☆ 生成对抗样本，利用梯度下降算法
                 for n in range(args.T_adv):
                     input_aug_feat, output_aug = model.functional(params, False, input_aug, return_feat=True)
                     recon_batch_aug, _, = wae(input_aug)
-                    # Constraint
+                    # 生成约束
                     constraint = mse_loss(input_feat, input_aug_feat)
                     ce_loss = criterion(output_aug, target_aug)
-                    # Relaxation
+                    # 生成拉格朗日松弛
                     relaxation = mse_loss(recon_batch, recon_batch_aug)
                     adv_loss = -(args.beta * relaxation + ce_loss - args.gamma * constraint)
                     aug_optimizer.zero_grad()
@@ -179,23 +183,25 @@ def train(model, exp_name, kwargs):
                 only_virtual_test_images = np.concatenate([only_virtual_test_images, virtual_test_images])
                 only_virtual_test_labels = np.concatenate([only_virtual_test_labels, virtual_test_labels])
 
-            # dataloader for domain augmentation
+            # 生成用于域增强的数据加载器
             aug_size = len(only_virtual_test_labels)
             X_aug = torch.stack([torch.from_numpy(only_virtual_test_images[i]) for i in range(aug_size)])
             y_aug = torch.stack([torch.from_numpy(np.asarray(i)) for i in only_virtual_test_labels])
             aug_dataset = torch.utils.data.TensorDataset(X_aug, y_aug)
-            aug_loader = torch.utils.data.DataLoader(aug_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, **kwargs)
+            aug_loader = torch.utils.data.DataLoader(aug_dataset, batch_size=args.batch_size, shuffle=True,
+                                                     drop_last=True, **kwargs)
             aug_loader_iter = iter(aug_loader)
 
-            # dataloader for the latest domain augmentation
+            # 生成用于 最新 域增强的数据加载器
             new_aug_size = len(virtual_test_labels)
             new_X_aug = torch.stack([torch.from_numpy(virtual_test_images[i]) for i in range(new_aug_size)])
             new_y_aug = torch.stack([torch.from_numpy(np.asarray(i)) for i in virtual_test_labels])
             new_aug_dataset = torch.utils.data.TensorDataset(new_X_aug, new_y_aug)
-            new_aug_loader = torch.utils.data.DataLoader(new_aug_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, **kwargs)
+            new_aug_loader = torch.utils.data.DataLoader(new_aug_dataset, batch_size=args.batch_size, shuffle=True,
+                                                         drop_last=True, **kwargs)
             new_aug_loader_iter = iter(new_aug_loader)
 
-            # re-train a wae on  the latest domain augmentation
+            # 在最新的域增强上重新训练 wae
             if counter_k + 1 < args.K:
                 wae = WAE().cuda()
                 wae_optimizer = torch.optim.Adam(wae.parameters(), lr=1e-3)
@@ -239,19 +245,20 @@ def train(model, exp_name, kwargs):
             loss_combine.backward()
 
         optimizer.step()
-        # measure accuracy and record loss
+        # 测量准确度并记录损失
         prec1 = accuracy(output.data, target, topk=(1,))[0]
         losses.update(loss.data.item(), input.size(0))
         top1.update(prec1.item(), input.size(0))
-        # measure elapsed time
+        # 测量经过的时间
         batch_time.update(time.time() - end)
 
         if t % args.print_freq == 0:
             print('Iter: [{0}][{1}/{2}]\t'
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})'.format(t, t, args.num_iters, batch_time=batch_time, loss=losses, top1=top1))
-            # evaluate on validation set per print_freq, compute acc on the whole val dataset
+                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})'.format(t, t, args.num_iters, batch_time=batch_time,
+                                                                  loss=losses, top1=top1))
+            # 评估每个 print_freq 的验证集，计算整个 val 数据集的 acc
             prec1 = validate(val_loader, model)
             print("validation set acc", prec1)
 
@@ -261,8 +268,8 @@ def train(model, exp_name, kwargs):
                 'prec': prec1,
             }, args.dataset, exp_name)
 
-def wae_train(model, D, new_aug_loader, optimizer, d_optimizer, epoch):
 
+def wae_train(model, D, new_aug_loader, optimizer, d_optimizer, epoch):
     def sample_z(n_sample=None, dim=None, sigma=None, template=None):
         if n_sample is None:
             n_sample = 32
@@ -309,11 +316,12 @@ def wae_train(model, D, new_aug_loader, optimizer, d_optimizer, epoch):
         if batch_idx % args.print_freq == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(new_aug_loader.dataset),
-                100. * batch_idx / len(new_aug_loader),
-                loss.item() / len(data)))
+                       100. * batch_idx / len(new_aug_loader),
+                       loss.item() / len(data)))
 
     print('====> Epoch: {} Average loss: {:.4f}'.format(
-          epoch, train_loss / len(new_aug_loader.dataset)))
+        epoch, train_loss / len(new_aug_loader.dataset)))
+
 
 if __name__ == '__main__':
     main()

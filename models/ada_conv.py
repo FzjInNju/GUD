@@ -52,7 +52,7 @@ class WAE(nn.Module):
         return self.decode(z), z
 
 class Adversary(nn.Module):
-    """Adversary architecture(Discriminator) for WAE-GAN."""
+    """WAE-GAN的对抗架构鉴别器。"""
     def __init__(self, z_dim=20):
         super(Adversary, self).__init__()
         self.z_dim = z_dim
